@@ -8,6 +8,8 @@
  *        : Hyun Woo Kwon <hyun.kwon@xilinx.com>
  */
 
+#define DEBUG 1
+
 #include <drm/drmP.h>
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
@@ -27,6 +29,23 @@
 #include "xlnx_bridge.h"
 #include "xlnx_crtc.h"
 #include "xlnx_drv.h"
+
+#ifdef DEBUG
+#define prt_dbg(fmt,...)					\
+	printk(KERN_DEBUG "%s (%s:%d): " fmt,			\
+	       __FUNCTION__,__FILE__,__LINE__,__VA_ARGS__)
+#define ret_dbg(ret,fmt,...)						\
+	do {								\
+		prt_dbg(fmt,__VA_ARGS__);				\
+		return ret;						\
+	} while (0)							
+#else
+#define prt_dbg(fmt,...) do {} while (0)
+#define ret_dbg(ret,fmt,...) return ret
+#endif
+
+#define XLNX_PL_DISP_MAX_WIDTH				2048
+#define XLNX_PL_DISP_MAX_HEIGHT				2048
 
 /*
  * Overview
@@ -132,6 +151,17 @@ static unsigned int xlnx_pl_disp_get_align(struct xlnx_crtc *xlnx_crtc)
 
 	return 1 << xlnx_pl_disp->chan->dma_chan->device->copy_align;
 }
+
+static int xlnx_pl_disp_get_max_width(struct xlnx_crtc *xlnx_crtc)
+{
+	return XLNX_PL_DISP_MAX_WIDTH;
+}
+
+static int xlnx_pl_disp_get_max_height(struct xlnx_crtc *xlnx_crtc)
+{
+	return XLNX_PL_DISP_MAX_HEIGHT;
+}
+
 
 /*
  * DRM plane functions
@@ -435,7 +465,7 @@ static int xlnx_pl_disp_bind(struct device *dev, struct device *master,
 				       num_fmts ? num_fmts : 1,
 				       NULL, DRM_PLANE_TYPE_PRIMARY, NULL);
 	if (ret)
-		return ret;
+		ret_dbg(ret,"drm_universal_plane_init: ERROR=%d\n",ret);
 
 	drm_plane_helper_add(&xlnx_pl_disp->plane,
 			     &xlnx_pl_disp_plane_helper_funcs);
@@ -445,17 +475,19 @@ static int xlnx_pl_disp_bind(struct device *dev, struct device *master,
 					&xlnx_pl_disp_crtc_funcs, NULL);
 	if (ret) {
 		drm_plane_cleanup(&xlnx_pl_disp->plane);
-		return ret;
+		ret_dbg(ret,"drm_crtc_init_with_planes: ERROR=%d\n",ret);
 	}
 
 	drm_crtc_helper_add(&xlnx_pl_disp->xlnx_crtc.crtc,
 			    &xlnx_pl_disp_crtc_helper_funcs);
 	xlnx_pl_disp->xlnx_crtc.get_format = &xlnx_pl_disp_get_format;
 	xlnx_pl_disp->xlnx_crtc.get_align = &xlnx_pl_disp_get_align;
+	xlnx_pl_disp->xlnx_crtc.get_max_width = &xlnx_pl_disp_get_max_width;
+	xlnx_pl_disp->xlnx_crtc.get_max_height = &xlnx_pl_disp_get_max_height;
 	xlnx_pl_disp->drm = drm;
 	xlnx_crtc_register(xlnx_pl_disp->drm, &xlnx_pl_disp->xlnx_crtc);
 
-	return 0;
+	ret_dbg(ret,"xlnx_crtc_register: ERROR=%d\n",ret);
 }
 
 static void xlnx_pl_disp_unbind(struct device *dev, struct device *master,
@@ -484,17 +516,17 @@ static int xlnx_pl_disp_probe(struct platform_device *pdev)
 
 	xlnx_pl_disp = devm_kzalloc(dev, sizeof(*xlnx_pl_disp), GFP_KERNEL);
 	if (!xlnx_pl_disp)
-		return -ENOMEM;
+		ret_dbg(-ENOMEM,"devm_kzalloc: ERROR=%d\n",-ENOMEM);
 
 	dma_chan = of_dma_request_slave_channel(dev->of_node, "dma0");
 	if (IS_ERR_OR_NULL(dma_chan)) {
 		dev_err(dev, "failed to request dma channel\n");
-		return PTR_ERR(dma_chan);
+		ret_dbg(PTR_ERR(dma_chan),"of_dma_request_slave_channel: ERROR=%d\n",PTR_ERR(dma_chan));
 	}
 
 	xlnx_dma_chan = devm_kzalloc(dev, sizeof(*xlnx_dma_chan), GFP_KERNEL);
 	if (!xlnx_dma_chan)
-		return -ENOMEM;
+		ret_dbg(-ENOMEM,"devm_kzalloc (dma): ERROR=%d\n",-ENOMEM);
 
 	xlnx_dma_chan->dma_chan = dma_chan;
 	xlnx_pl_disp->chan = xlnx_dma_chan;
@@ -512,7 +544,7 @@ static int xlnx_pl_disp_probe(struct platform_device *pdev)
 		xlnx_pl_disp->vtc_bridge = of_xlnx_bridge_get(vtc_node);
 		if (!xlnx_pl_disp->vtc_bridge) {
 			dev_info(dev, "Didn't get vtc bridge instance\n");
-			return -EPROBE_DEFER;
+			ret_dbg(-EPROBE_DEFER,"ERROR=%d\n",-EPROBE_DEFER);
 		}
 	} else {
 		dev_info(dev, "vtc bridge property not present\n");
@@ -534,14 +566,14 @@ static int xlnx_pl_disp_probe(struct platform_device *pdev)
 
 	dev_info(&pdev->dev, "Xlnx PL display driver probed\n");
 
-	return 0;
+	ret_dbg(0,"Probe ok: RETURN=%d\n",0);
 
 err_component:
 	component_del(dev, &xlnx_pl_disp_component_ops);
 err_dma:
 	dma_release_channel(xlnx_pl_disp->chan->dma_chan);
 
-	return ret;
+	ret_dbg(ret,"Probe failed: ERROR=%d\n",ret);
 }
 
 static int xlnx_pl_disp_remove(struct platform_device *pdev)

@@ -12,6 +12,8 @@
  * Controller connected to the CRTC.
  */
 
+#define DEBUG 1
+
 #include <drm/drmP.h>
 #include <linux/device.h>
 #include <linux/err.h>
@@ -22,6 +24,20 @@
 #include <linux/slab.h>
 #include <video/videomode.h>
 #include "xlnx_bridge.h"
+
+#ifdef DEBUG
+#define prt_dbg(fmt,...)					\
+	printk(KERN_DEBUG "%s (%s:%d): " fmt,			\
+	       __FUNCTION__,__FILE__,__LINE__,__VA_ARGS__)
+#define ret_dbg(ret,fmt,...)						\
+	do {								\
+		prt_dbg(fmt,__VA_ARGS__);				\
+		return ret;						\
+	} while (0)							
+#else
+#define prt_dbg(fmt,...) do {} while (0)
+#define ret_dbg(ret,fmt,...) return ret
+#endif
 
 /* register offsets */
 #define XVTC_CTL		0x000
@@ -331,20 +347,20 @@ static int xlnx_vtc_probe(struct platform_device *pdev)
 
 	vtc = devm_kzalloc(dev, sizeof(*vtc), GFP_KERNEL);
 	if (!vtc)
-		return -ENOMEM;
+		ret_dbg(-ENOMEM,"devm_kzalloc: ERROR=%d\n",-ENOMEM);
 
 	vtc->dev = dev;
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res) {
 		dev_err(dev, "failed to get resource for device\n");
-		return -EFAULT;
+		ret_dbg(-EFAULT,"platform_get_resource: ERROR=%d\n",-EFAULT);
 	}
 
 	vtc->base = devm_ioremap_resource(dev, res);
 	if (IS_ERR(vtc->base)) {
 		dev_err(dev, "failed to remap io region\n");
-		return PTR_ERR(vtc->base);
+		ret_dbg(PTR_ERR(vtc->base),"devm_ioremap_resource: ERROR=%d\n",PTR_ERR(vtc->base));
 	}
 
 	platform_set_drvdata(pdev, vtc);
@@ -353,7 +369,7 @@ static int xlnx_vtc_probe(struct platform_device *pdev)
 				   &vtc->ppc);
 	if (ret || (vtc->ppc != 1 && vtc->ppc != 2 && vtc->ppc != 4)) {
 		dev_err(dev, "failed to get ppc\n");
-		return ret;
+		ret_dbg(ret,"xlnx,pixels-per-clock: ERROR=%d\n",ret);
 	}
 	dev_info(dev, "vtc ppc = %d\n", vtc->ppc);
 
@@ -366,13 +382,13 @@ static int xlnx_vtc_probe(struct platform_device *pdev)
 	ret = xlnx_bridge_register(&vtc->bridge);
 	if (ret) {
 		dev_err(dev, "Bridge registration failed\n");
-		return ret;
+		ret_dbg(ret,"xlnx_bridge_register: ERROR=%d\n",ret);
 	}
 
 	dev_info(dev, "Xilinx VTC IP version : 0x%08x\n",
 		 xlnx_vtc_readl(vtc->base, XVTC_VER));
 	dev_info(dev, "Xilinx VTC DRM Bridge driver probed\n");
-	return 0;
+	ret_dbg(0,"Probe ok: RETURN=%d\n",0);
 }
 
 static int xlnx_vtc_remove(struct platform_device *pdev)

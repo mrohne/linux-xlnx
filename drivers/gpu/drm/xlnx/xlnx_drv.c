@@ -16,6 +16,8 @@
  * GNU General Public License for more details.
  */
 
+#define DEBUG 1
+
 #include <drm/drmP.h>
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
@@ -37,6 +39,20 @@
 #include "xlnx_drv.h"
 #include "xlnx_fb.h"
 #include "xlnx_gem.h"
+
+#ifdef DEBUG
+#define prt_dbg(fmt,...)					\
+	printk(KERN_DEBUG "%s (%s:%d): " fmt,			\
+	       __FUNCTION__,__FILE__,__LINE__,__VA_ARGS__)
+#define ret_dbg(ret,fmt,...)						\
+	do {								\
+		prt_dbg(fmt,__VA_ARGS__);				\
+		return ret;						\
+	} while (0)							
+#else
+#define prt_dbg(fmt,...) do {} while (0)
+#define ret_dbg(ret,fmt,...) return ret
+#endif
 
 #define DRIVER_NAME	"xlnx"
 #define DRIVER_DESC	"Xilinx DRM KMS Driver"
@@ -134,6 +150,8 @@ static void xlnx_mode_config_init(struct drm_device *drm)
 		xlnx_crtc_helper_get_cursor_width(crtc);
 	drm->mode_config.cursor_height =
 		xlnx_crtc_helper_get_cursor_height(crtc);
+	
+	prt_dbg("max size: %dx%d\n",drm->mode_config.max_width,drm->mode_config.max_height);
 }
 
 static int xlnx_drm_open(struct drm_device *dev, struct drm_file *file)
@@ -226,9 +244,10 @@ static int xlnx_bind(struct device *dev)
 	int ret;
 	u32 format;
 
+	prt_dbg("Bind: %p\n",dev);
 	drm = drm_dev_alloc(&xlnx_drm_driver, &pdev->dev);
 	if (IS_ERR(drm))
-		return PTR_ERR(drm);
+		ret_dbg(PTR_ERR(drm),"drm_dev_alloc: ERROR=%d\n",PTR_ERR(drm));
 
 	xlnx_drm = devm_kzalloc(drm->dev, sizeof(*xlnx_drm), GFP_KERNEL);
 	if (!xlnx_drm) {
@@ -236,6 +255,7 @@ static int xlnx_bind(struct device *dev)
 		goto err_drm;
 	}
 
+	prt_dbg("Calling drm_mode_config_init: %p\n",dev);
 	drm_mode_config_init(drm);
 	drm->mode_config.funcs = &xlnx_mode_config_funcs;
 
@@ -262,6 +282,7 @@ static int xlnx_bind(struct device *dev)
 	if (ret)
 		goto err_crtc;
 
+	prt_dbg("Calling xlnx_mode_config_init: %p\n",dev);
 	xlnx_mode_config_init(drm);
 	drm_mode_config_reset(drm);
 	dma_set_mask(drm->dev, xlnx_crtc_helper_get_dma_mask(xlnx_drm->crtc));
@@ -288,7 +309,7 @@ static int xlnx_bind(struct device *dev)
 	if (ret < 0)
 		goto err_fb;
 
-	return 0;
+	ret_dbg(0,"xlnx_bind: RETURN=%d\n",0);
 
 err_fb:
 	if (xlnx_drm->fb)
@@ -330,10 +351,10 @@ static int xlnx_of_component_probe(struct device *master_dev,
 	struct device *dev = master_dev->parent;
 	struct device_node *ep, *port, *remote, *parent;
 	struct component_match *match = NULL;
-	int i;
+	int ret, i;
 
 	if (!dev->of_node)
-		return -EINVAL;
+		ret_dbg(-EINVAL,"dev->of_node: ERROR=%d\n",-EINVAL);
 
 	component_match_add(master_dev, &match, compare_of, dev->of_node);
 
@@ -394,7 +415,8 @@ static int xlnx_of_component_probe(struct device *master_dev,
 		of_node_put(port);
 	}
 
-	return component_master_add_with_match(master_dev, m_ops, match);
+	ret = component_master_add_with_match(master_dev, m_ops, match);
+	ret_dbg(ret,"component_master_add_with_match: RETURN=%d\n",ret);
 }
 
 static int xlnx_compare_of(struct device *dev, void *data)
@@ -484,11 +506,11 @@ struct platform_device *xlnx_drm_pipeline_init(struct platform_device *pdev)
 
 	id = ffs(xlnx_master_ids);
 	if (!id)
-		return ERR_PTR(-ENOSPC);
+		ret_dbg(ERR_PTR(-ENOSPC),"ffs: ERROR=%d\n",-ENOSPC);
 
 	master = platform_device_alloc("xlnx-drm", id - 1);
 	if (!master)
-		return ERR_PTR(-ENOMEM);
+		ret_dbg(ERR_PTR(-ENOMEM),"ERROR=%d\n",-ENOMEM);
 
 	master->dev.parent = &pdev->dev;
 	ret = platform_device_add(master);
@@ -497,11 +519,11 @@ struct platform_device *xlnx_drm_pipeline_init(struct platform_device *pdev)
 
 	WARN_ON(master->id != id - 1);
 	xlnx_master_ids &= ~BIT(master->id);
-	return master;
+	ret_dbg(master,"Init ok: RETURN=%p\n",master);
 
 err_out:
 	platform_device_unregister(master);
-	return ERR_PTR(ret);
+	ret_dbg(ERR_PTR(ret),"ERROR=%d\n",ret);
 }
 EXPORT_SYMBOL_GPL(xlnx_drm_pipeline_init);
 

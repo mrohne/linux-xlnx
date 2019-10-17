@@ -20,6 +20,8 @@
  * GNU General Public License for more details.
  */
 
+#define DEBUG 1
+
 #include <drm/drmP.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_crtc_helper.h>
@@ -30,6 +32,20 @@
 #include "xlnx_crtc.h"
 #include "xlnx_drv.h"
 #include "xlnx_fb.h"
+
+#ifdef DEBUG
+#define prt_dbg(fmt,...)					\
+	printk(KERN_DEBUG "%s (%s:%d): " fmt,			\
+	       __FUNCTION__,__FILE__,__LINE__,__VA_ARGS__)
+#define ret_dbg(ret,fmt,...)						\
+	do {								\
+		prt_dbg(fmt,__VA_ARGS__);				\
+		return ret;						\
+	} while (0)							
+#else
+#define prt_dbg(fmt,...) do {} while (0)
+#define ret_dbg(ret,fmt,...) return ret
+#endif
 
 #define XLNX_MAX_PLANES	4
 
@@ -126,7 +142,7 @@ static int xlnx_fbdev_create(struct drm_fb_helper *fb_helper,
 
 	obj = drm_gem_cma_create(drm, bytes);
 	if (IS_ERR(obj))
-		return PTR_ERR(obj);
+		ret_dbg(PTR_ERR(obj),"drm_gem_cma_create: ERROR=%d\n",PTR_ERR(obj));
 
 	fbi = framebuffer_alloc(0, drm->dev);
 	if (!fbi) {
@@ -175,7 +191,7 @@ static int xlnx_fbdev_create(struct drm_fb_helper *fb_helper,
 	fbi->screen_size = bytes;
 	fbi->fix.smem_len = bytes;
 
-	return 0;
+	ret_dbg(0,"Probe ok: RETURN=%d\n",0);
 
 err_fb_destroy:
 	drm_framebuffer_unregister_private(fb);
@@ -184,7 +200,7 @@ err_framebuffer_release:
 	framebuffer_release(fbi);
 err_drm_gem_cma_free_object:
 	drm_gem_cma_free_object(&obj->base);
-	return ret;
+	ret_dbg(ret,"Probe failed: ERROR=%d\n",ret);
 }
 
 static struct drm_fb_helper_funcs xlnx_fb_helper_funcs = {
@@ -214,7 +230,7 @@ xlnx_fb_init(struct drm_device *drm, int preferred_bpp,
 
 	fbdev = kzalloc(sizeof(*fbdev), GFP_KERNEL);
 	if (!fbdev)
-		return ERR_PTR(-ENOMEM);
+		ret_dbg(ERR_PTR(-ENOMEM),"kzalloc: ERROR=%d\n",-ENOMEM);
 
 	fbdev->vres_mult = vres_mult;
 	fbdev->align = align;
@@ -239,13 +255,13 @@ xlnx_fb_init(struct drm_device *drm, int preferred_bpp,
 		goto err_drm_fb_helper_fini;
 	}
 
-	return fb_helper;
+	ret_dbg(fb_helper,"Init ok: RETURN=%p\n",fb_helper);
 
 err_drm_fb_helper_fini:
 	drm_fb_helper_fini(fb_helper);
 err_free:
 	kfree(fbdev);
-	return ERR_PTR(ret);
+	ret_dbg(ERR_PTR(ret),"Init failed: ERROR=%d\n",ret);
 }
 
 /**
@@ -302,6 +318,8 @@ struct drm_framebuffer *
 xlnx_fb_create(struct drm_device *drm, struct drm_file *file_priv,
 	       const struct drm_mode_fb_cmd2 *mode_cmd)
 {
-	return drm_gem_fb_create_with_funcs(drm, file_priv, mode_cmd,
-					    &xlnx_fb_funcs);
+	struct drm_framebuffer * fb;
+	fb = drm_gem_fb_create_with_funcs(drm, file_priv, mode_cmd,
+					  &xlnx_fb_funcs);
+	ret_dbg(fb,"fb_create RETURN=%p\n",fb);
 }
