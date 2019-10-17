@@ -1776,8 +1776,10 @@ static int drm_fb_helper_single_fb_probe(struct drm_fb_helper *fb_helper,
 		desired_mode = fb_helper->crtc_info[i].desired_mode;
 		mode_set = &fb_helper->crtc_info[i].mode_set;
 
-		if (!desired_mode)
+		if (!desired_mode) {
+			DRM_DEBUG("desired_mode not set: fb_helper->crtc_info[%d]\n", i);
 			continue;
+		}
 
 		crtc_count++;
 
@@ -2393,11 +2395,14 @@ static void drm_setup_crtcs(struct drm_fb_helper *fb_helper,
 		drm_fb_helper_modeset_release(fb_helper,
 					      &fb_helper->crtc_info[i].mode_set);
 
+	DRM_DEBUG_KMS("looping over crtcs and modes\n");
 	drm_fb_helper_for_each_connector(fb_helper, i) {
 		struct drm_display_mode *mode = modes[i];
 		struct drm_fb_helper_crtc *fb_crtc = crtcs[i];
 		struct drm_fb_offset *offset = &offsets[i];
 
+		DRM_DEBUG_KMS("modes[%d] -> %p\n",i,modes[i]);
+		DRM_DEBUG_KMS("crtcs[%d] -> %p\n",i,crtcs[i]);
 		if (mode && fb_crtc) {
 			struct drm_mode_set *modeset = &fb_crtc->mode_set;
 			struct drm_connector *connector =
