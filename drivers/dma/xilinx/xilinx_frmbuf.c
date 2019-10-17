@@ -20,6 +20,8 @@
  * (at your option) any later version.
  */
 
+#define DEBUG 1
+
 #include <linux/bitops.h>
 #include <linux/delay.h>
 #include <linux/dma/xilinx_frmbuf.h>
@@ -40,6 +42,20 @@
 #include <drm/drm_fourcc.h>
 
 #include "../dmaengine.h"
+
+#ifdef DEBUG
+#define prt_dbg(fmt,...)					\
+	printk(KERN_DEBUG "%s (%s:%d): " fmt,			\
+	       __FUNCTION__,__FILE__,__LINE__,__VA_ARGS__)
+#define ret_dbg(ret,fmt,...)						\
+	do {								\
+		prt_dbg(fmt,__VA_ARGS__);				\
+		return ret;						\
+	} while (0)							
+#else
+#define prt_dbg(fmt,...) do {} while (0)
+#define ret_dbg(ret,fmt,...) return ret
+#endif
 
 /* Register/Descriptor Offsets */
 #define XILINX_FRMBUF_CTRL_OFFSET		0x00
@@ -1476,7 +1492,7 @@ static int xilinx_frmbuf_probe(struct platform_device *pdev)
 		else
 			dev_err(&pdev->dev,
 				"Unable to locate reset property in dt\n");
-		return err;
+		ret_dbg(err,"devm_gpiod_get: ERROR=%d\n",err);
 	}
 
 	gpiod_set_value_cansleep(xdev->rst_gpio, 0x0);
