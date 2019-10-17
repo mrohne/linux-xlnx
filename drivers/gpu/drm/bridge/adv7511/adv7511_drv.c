@@ -6,6 +6,8 @@
  * Licensed under the GPL-2.
  */
 
+#define DEBUG 1
+
 #include <linux/device.h>
 #include <linux/gpio/consumer.h>
 #include <linux/module.h>
@@ -18,6 +20,20 @@
 #include <drm/drm_edid.h>
 
 #include "adv7511.h"
+
+#ifdef DEBUG
+#define prt_dbg(fmt,...)					\
+	printk(KERN_DEBUG "%s (%s:%d): " fmt,			\
+	       __FUNCTION__,__FILE__,__LINE__,__VA_ARGS__)
+#define ret_dbg(ret,fmt,...)						\
+	do {								\
+		prt_dbg(fmt,__VA_ARGS__);				\
+		return ret;						\
+	} while (0)							
+#else
+#define prt_dbg(fmt,...) do {} while (0)
+#define ret_dbg(ret,fmt,...) return ret
+#endif
 
 /* ADI recommended values for proper operation. */
 static const struct reg_sequence adv7511_fixed_registers[] = {
@@ -804,6 +820,7 @@ static void adv7511_bridge_enable(struct drm_bridge *bridge)
 {
 	struct adv7511 *adv = bridge_to_adv7511(bridge);
 
+	prt_dbg("bridge: %p\n",bridge);
 	adv7511_power_on(adv);
 }
 
@@ -811,6 +828,7 @@ static void adv7511_bridge_disable(struct drm_bridge *bridge)
 {
 	struct adv7511 *adv = bridge_to_adv7511(bridge);
 
+	prt_dbg("bridge: %p\n",bridge);
 	adv7511_power_off(adv);
 }
 
@@ -820,6 +838,7 @@ static void adv7511_bridge_mode_set(struct drm_bridge *bridge,
 {
 	struct adv7511 *adv = bridge_to_adv7511(bridge);
 
+	prt_dbg("bridge: %p mode: %p\n",bridge,mode);
 	adv7511_mode_set(adv, mode, adj_mode);
 }
 
@@ -828,6 +847,7 @@ static int adv7511_bridge_attach(struct drm_bridge *bridge)
 	struct adv7511 *adv = bridge_to_adv7511(bridge);
 	int ret;
 
+	prt_dbg("bridge: %p\n",bridge);
 	if (!bridge->encoder) {
 		DRM_ERROR("Parent encoder object not found");
 		return -ENODEV;
@@ -1017,12 +1037,13 @@ static int adv7511_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
 	unsigned int val;
 	int ret, reg_v1p2_uV;
 
+	prt_dbg("i2c: %p id: %s\n", i2c, id->name);
 	if (!dev->of_node)
-		return -EINVAL;
+		ret_dbg(-EINVAL,"dev->of_node: ERROR=%d\n",-EINVAL);
 
 	adv7511 = devm_kzalloc(dev, sizeof(*adv7511), GFP_KERNEL);
 	if (!adv7511)
-		return -ENOMEM;
+		ret_dbg(-ENOMEM,"devm_kzalloc: ERROR=%d\n",-ENOMEM);
 
 	adv7511->powered = false;
 	adv7511->status = connector_status_disconnected;
@@ -1040,12 +1061,12 @@ static int adv7511_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
 	else
 		ret = adv7533_parse_dt(dev->of_node, adv7511);
 	if (ret)
-		return ret;
+		ret_dbg(ret,"adv75xx_parse_dt: ERROR=%d\n",ret);
 
 	ret = adv7511_init_regulators(adv7511);
 	if (ret) {
 		dev_err(dev, "failed to init regulators\n");
-		return ret;
+		ret_dbg(ret,"adv7511_init_regulators: ERROR=%d\n",ret);
 	}
 
 	/*
@@ -1054,6 +1075,7 @@ static int adv7511_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
 	 */
 	adv7511->gpio_pd = devm_gpiod_get_optional(dev, "pd", GPIOD_OUT_HIGH);
 	if (IS_ERR(adv7511->gpio_pd)) {
+		prt_dbg("devm_gpiod_get_optional: %ld\n",PTR_ERR(adv7511->gpio_pd));
 		ret = PTR_ERR(adv7511->gpio_pd);
 		goto uninit_regulators;
 	}
@@ -1065,6 +1087,7 @@ static int adv7511_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
 
 	adv7511->regmap = devm_regmap_init_i2c(i2c, &adv7511_regmap_config);
 	if (IS_ERR(adv7511->regmap)) {
+		prt_dbg("devm_regmap_init_i2c: %ld\n",PTR_ERR(adv7511->regmap));
 		ret = PTR_ERR(adv7511->regmap);
 		goto uninit_regulators;
 	}
@@ -1119,8 +1142,8 @@ static int adv7511_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
 	}
 
 	INIT_WORK(&adv7511->hpd_work, adv7511_hpd_work);
-
 	if (i2c->irq) {
+		prt_dbg("requesting i2c->irq: %d\n",i2c->irq);
 		init_waitqueue_head(&adv7511->wq);
 
 		ret = devm_request_threaded_irq(dev, i2c->irq, NULL,
@@ -1149,16 +1172,19 @@ static int adv7511_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
 
 	adv7511_audio_init(dev, adv7511);
 
-	return 0;
+	ret_dbg(0,"Probe ok: RETURN=%d\n",0);
 
 err_unregister_cec:
+	prt_dbg("err_unregister_cec: %d\n",ret);
 	adv7533_uninit_cec(adv7511);
 err_i2c_unregister_edid:
+	prt_dbg("err_i2c_unregister_edid: %d\n",ret);
 	i2c_unregister_device(adv7511->i2c_edid);
 uninit_regulators:
+	prt_dbg("uninit_regulators: %d\n",ret);
 	adv7511_uninit_regulators(adv7511);
 
-	return ret;
+	ret_dbg(ret,"Probe failed: ERROR=%d\n",ret);
 }
 
 static int adv7511_remove(struct i2c_client *i2c)
