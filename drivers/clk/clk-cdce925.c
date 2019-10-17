@@ -10,6 +10,9 @@
  * Copyright (C) 2014, Topic Embedded Products
  * Licenced under GPL
  */
+
+#define DEBUG 1
+
 #include <linux/clk.h>
 #include <linux/clk-provider.h>
 #include <linux/delay.h>
@@ -18,6 +21,20 @@
 #include <linux/regmap.h>
 #include <linux/slab.h>
 #include <linux/gcd.h>
+
+#ifdef DEBUG
+#define prt_dbg(fmt,...)					\
+	printk(KERN_DEBUG "%s (%s:%d): " fmt,			\
+	       __FUNCTION__,__FILE__,__LINE__,__VA_ARGS__)
+#define ret_dbg(ret,fmt,...)						\
+	do {								\
+		prt_dbg(fmt,__VA_ARGS__);				\
+		return ret;						\
+	} while (0)							
+#else
+#define prt_dbg(fmt,...) do {} while (0)
+#define ret_dbg(ret,fmt,...) return ret
+#endif
 
 /* Each chip has different number of PLLs and outputs, for example:
  * The CECE925 has 2 PLLs which can be routed through dividers to 5 outputs.
@@ -91,9 +108,12 @@ struct clk_cdce925_chip {
 static unsigned long cdce925_pll_calculate_rate(unsigned long parent_rate,
 	u16 n, u16 m)
 {
+	unsigned long ret;
+	prt_dbg("parent_rate = %d n = %d m = %d\n",parent_rate,n,m);
 	if ((!m || !n) || (m == n))
 		return parent_rate; /* In bypass mode runs at same frequency */
-	return mult_frac(parent_rate, (unsigned long)n, (unsigned long)m);
+	ret = mult_frac(parent_rate, (unsigned long)n, (unsigned long)m);
+	ret_dbg(ret,"RETURN=%l\n",ret);
 }
 
 static unsigned long cdce925_pll_recalc_rate(struct clk_hw *hw,
@@ -155,27 +175,28 @@ static int cdce925_pll_set_rate(struct clk_hw *hw, unsigned long rate,
 		unsigned long parent_rate)
 {
 	struct clk_cdce925_pll *data = to_clk_cdce925_pll(hw);
-
+	prt_dbg("parent_rate = %d rate = %d\n",parent_rate,rate);
+	
 	if (!rate || (rate == parent_rate)) {
 		data->m = 0; /* Bypass mode */
 		data->n = 0;
-		return 0;
+		ret_dbg(0,"Bypass mode ERROR=%d\n",0);
 	}
 
 	if ((rate < CDCE925_PLL_FREQUENCY_MIN) ||
 		(rate > CDCE925_PLL_FREQUENCY_MAX)) {
 		pr_debug("%s: rate %lu outside PLL range.\n", __func__, rate);
-		return -EINVAL;
+		ret_dbg(-EINVAL,"rate < CDCE925_PLL_FREQUENCY_MIN - ERROR=%d\n",-EINVAL);
 	}
 
 	if (rate < parent_rate) {
 		pr_debug("%s: rate %lu less than parent rate %lu.\n", __func__,
 			rate, parent_rate);
-		return -EINVAL;
+		ret_dbg(-EINVAL,"rate < parent_rate - ERROR=%d\n",-EINVAL);
 	}
 
 	cdce925_pll_find_rate(rate, parent_rate, &data->n, &data->m);
-	return 0;
+	ret_dbg(0,"cdce925_pll_set_rate rate=%l\n",rate);
 }
 
 
@@ -632,7 +653,7 @@ static int cdce925_probe(struct i2c_client *client,
 	dev_dbg(&client->dev, "%s\n", __func__);
 	data = devm_kzalloc(&client->dev, sizeof(*data), GFP_KERNEL);
 	if (!data)
-		return -ENOMEM;
+		ret_dbg(-ENOMEM,"devm_kzalloc: ERROR=%d\n",-ENOMEM);
 
 	data->i2c_client = client;
 	data->chip_info = &clk_cdce925_chip_info_tbl[id->driver_data];
@@ -642,14 +663,14 @@ static int cdce925_probe(struct i2c_client *client,
 			&client->dev, &config);
 	if (IS_ERR(data->regmap)) {
 		dev_err(&client->dev, "failed to allocate register map\n");
-		return PTR_ERR(data->regmap);
+		ret_dbg(PTR_ERR(data->regmap),"devm_regmap_init: ERROR=%d\n",PTR_ERR(data->regmap));
 	}
 	i2c_set_clientdata(client, data);
 
 	parent_name = of_clk_get_parent_name(node, 0);
 	if (!parent_name) {
 		dev_err(&client->dev, "missing parent clock\n");
-		return -ENODEV;
+		ret_dbg(-ENODEV,"of_clk_get_parent_name: ERROR=%d\n",-ENODEV);
 	}
 	dev_dbg(&client->dev, "parent is: %s\n", parent_name);
 
@@ -776,7 +797,7 @@ error:
 		/* clock framework made a copy of the name */
 		kfree(pll_clk_name[i]);
 
-	return err;
+	ret_dbg(err,"probe: RETURN=%d\n",err);
 }
 
 static const struct i2c_device_id cdce925_id[] = {

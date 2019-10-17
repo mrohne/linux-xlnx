@@ -18,6 +18,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#define DEBUG 1
+
 #include <linux/platform_device.h>
 #include <linux/clk.h>
 #include <linux/clk-provider.h>
@@ -26,6 +28,20 @@
 #include <linux/of.h>
 #include <linux/module.h>
 #include <linux/err.h>
+
+#ifdef DEBUG
+#define prt_dbg(fmt,...)					\
+	printk(KERN_DEBUG "%s (%s:%d): " fmt,			\
+	       __FUNCTION__,__FILE__,__LINE__,__VA_ARGS__)
+#define ret_dbg(ret,fmt,...)						\
+	do {								\
+		prt_dbg(fmt,__VA_ARGS__);				\
+		return ret;						\
+	} while (0)							
+#else
+#define prt_dbg(fmt,...) do {} while (0)
+#define ret_dbg(ret,fmt,...) return ret
+#endif
 
 #define WZRD_NUM_OUTPUTS	7
 #define WZRD_ACLK_MAX_FREQ	250000000UL
@@ -150,6 +166,7 @@ static int clk_wzrd_dynamic_reconfig(struct clk_hw *hw, unsigned long rate,
 			(void __iomem *)((u64)divider->base + divider->offset);
 
 	curr_rate = clk_hw_get_rate(hw);
+	prt_dbg("parent: %ld curr: %ld rate: %ld\n", parent_rate, curr_rate, rate);
 
 	if (divider->lock)
 		spin_lock_irqsave(divider->lock, flags);
@@ -350,13 +367,13 @@ static int clk_wzrd_probe(struct platform_device *pdev)
 
 	clk_wzrd = devm_kzalloc(&pdev->dev, sizeof(*clk_wzrd), GFP_KERNEL);
 	if (!clk_wzrd)
-		return -ENOMEM;
+		ret_dbg(-ENOMEM,"devm_kzalloc: ERROR=%d\n",-ENOMEM);
 	platform_set_drvdata(pdev, clk_wzrd);
 
 	mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	clk_wzrd->base = devm_ioremap_resource(&pdev->dev, mem);
 	if (IS_ERR(clk_wzrd->base))
-		return PTR_ERR(clk_wzrd->base);
+		ret_dbg(PTR_ERR(clk_wzrd->base),"devm_ioremap_resource: ERROR=%d\n",PTR_ERR(clk_wzrd->base));
 
 	ret = of_property_read_u32(np, "speed-grade", &clk_wzrd->speed_grade);
 	if (!ret) {
@@ -371,19 +388,19 @@ static int clk_wzrd_probe(struct platform_device *pdev)
 	if (IS_ERR(clk_wzrd->clk_in1)) {
 		if (clk_wzrd->clk_in1 != ERR_PTR(-EPROBE_DEFER))
 			dev_err(&pdev->dev, "clk_in1 not found\n");
-		return PTR_ERR(clk_wzrd->clk_in1);
+		ret_dbg(PTR_ERR(clk_wzrd->clk_in1),"devm_clk_get: ERROR=%d\n",PTR_ERR(clk_wzrd->clk_in1));
 	}
 
 	clk_wzrd->axi_clk = devm_clk_get(&pdev->dev, "s_axi_aclk");
 	if (IS_ERR(clk_wzrd->axi_clk)) {
 		if (clk_wzrd->axi_clk != ERR_PTR(-EPROBE_DEFER))
 			dev_err(&pdev->dev, "s_axi_aclk not found\n");
-		return PTR_ERR(clk_wzrd->axi_clk);
+		ret_dbg(PTR_ERR(clk_wzrd->axi_clk),"devm_clk_get: ERROR=%d\n",PTR_ERR(clk_wzrd->axi_clk));
 	}
 	ret = clk_prepare_enable(clk_wzrd->axi_clk);
 	if (ret) {
 		dev_err(&pdev->dev, "enabling s_axi_aclk failed\n");
-		return ret;
+		ret_dbg(ret,"clk_prepare_enable: ERROR=%d\n",ret);
 	}
 	rate = clk_get_rate(clk_wzrd->axi_clk);
 	if (rate > WZRD_ACLK_MAX_FREQ) {
@@ -491,17 +508,20 @@ static int clk_wzrd_probe(struct platform_device *pdev)
 				 "unable to register clock notifier\n");
 	}
 
-	return 0;
+	ret_dbg(0,"RETURN=%d\n",0);
 
 err_rm_int_clks:
+	prt_dbg("clk_unregister(%p)\n",clk_wzrd->clks_internal[1]);
 	clk_unregister(clk_wzrd->clks_internal[1]);
 err_rm_int_clk:
+	prt_dbg("clk_unregister(%p)\n",clk_wzrd->clks_internal[0]);
 	kfree(clk_name);
 	clk_unregister(clk_wzrd->clks_internal[0]);
 err_disable_clk:
+	prt_dbg("clk_disable_unprepare(%p)\n",clk_wzrd->axi_clk);
 	clk_disable_unprepare(clk_wzrd->axi_clk);
 
-	return ret;
+	ret_dbg(ret,"ERROR=%d\n",ret);
 }
 
 static int clk_wzrd_remove(struct platform_device *pdev)
