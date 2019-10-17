@@ -7,6 +7,8 @@
  * Licensed under the GPL-2.
  */
 
+#define DEBUG 1
+
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
@@ -167,16 +169,16 @@ static int axi_hdmi_platform_probe(struct platform_device *pdev)
 
 	private = devm_kzalloc(&pdev->dev, sizeof(*private), GFP_KERNEL);
 	if (!private)
-		return -ENOMEM;
+		ret_dbg(-ENOMEM,"devm_kzalloc: ERROR=%d\n",-ENOMEM);
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	private->base = devm_ioremap_resource(&pdev->dev, res);
 	if (IS_ERR(private->base))
-		return PTR_ERR(private->base);
+		ret_dbg(PTR_ERR(private->base),"devm_ioremap_resource: ERROR=%d\n",PTR_ERR(private->base));
 
 	private->hdmi_clock = devm_clk_get(&pdev->dev, NULL);
 	if (IS_ERR(private->hdmi_clock)) {
-		return -EPROBE_DEFER;
+		ret_dbg(-EPROBE_DEFER,"devm_clk_get: ERROR=%d\n",-EPROBE_DEFER);
 	}
 
 	ep_node = of_graph_get_next_endpoint(np, NULL);
@@ -184,11 +186,11 @@ static int axi_hdmi_platform_probe(struct platform_device *pdev)
 		ret = of_graph_parse_endpoint(ep_node, &ep);
 		if (ret) {
 			of_node_put(ep_node);
-			return ret;
+			ret_dbg(ret,"of_graph_parse_endpoint: ERROR=%d\n",ret);
 		}
 		if (ep.port != 0 && ep.id != 0) {
 			of_node_put(ep_node);
-			return -EINVAL;
+			ret_dbg(-EINVAL,"ep.port: ERROR=%d\n",-EINVAL);
 		}
 		slave_node = of_graph_get_remote_port_parent(ep_node);
 		of_node_put(ep_node);
@@ -197,7 +199,7 @@ static int axi_hdmi_platform_probe(struct platform_device *pdev)
 	}
 
 	if (!slave_node)
-		return -EINVAL;
+		ret_dbg(-EINVAL,"slave_node: ERROR=%d\n",-EINVAL);
 
 	private->is_rgb = of_property_read_bool(np, "adi,is-rgb");
 
@@ -207,15 +209,16 @@ static int axi_hdmi_platform_probe(struct platform_device *pdev)
 	of_node_put(slave_node);
 
 	if (!private->encoder_slave || !private->encoder_slave->dev.driver)
-		return -EPROBE_DEFER;
+		ret_dbg(-EPROBE_DEFER,"private->encoder_slave: ERROR=%d\n",-EPROBE_DEFER);
 
 	private->dma = dma_request_slave_channel(&pdev->dev, "video");
 	if (private->dma == NULL)
-		return -EPROBE_DEFER;
+		ret_dbg(-EPROBE_DEFER,"dma_request_slave_channel: ERROR=%d\n",-EPROBE_DEFER);
 
 	platform_set_drvdata(pdev, private);
 
-	return axi_hdmi_init(&axi_hdmi_driver, &pdev->dev);
+	ret =  axi_hdmi_init(&axi_hdmi_driver, &pdev->dev);
+	ret_dbg(ret,"axi_hdmi_init: RETURN=%d\n",ret);
 }
 
 static int axi_hdmi_platform_remove(struct platform_device *pdev)

@@ -15,6 +15,20 @@
 #include <linux/of.h>
 #include <linux/clk.h>
 
+#ifdef DEBUG
+#define prt_dbg(fmt,...)					\
+	printk(KERN_DEBUG "%s (%s:%d): " fmt,			\
+	       __FUNCTION__,"adv75511.c",__LINE__,__VA_ARGS__)
+#define ret_dbg(ret,fmt,...)						\
+	do {								\
+		prt_dbg(fmt,__VA_ARGS__);				\
+		return ret;						\
+	} while (0)							
+#else
+#define prt_dbg(fmt,...) do {} while (0)
+#define ret_dbg(ret,fmt,...) return ret
+#endif
+
 struct xlnx_pcm_dma_params {
 	struct device_node *of_node;
 	int chan_id;
